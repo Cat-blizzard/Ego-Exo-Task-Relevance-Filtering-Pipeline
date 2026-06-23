@@ -1,5 +1,7 @@
 # Ego-Exo Task-Relevance Filtering Pipeline
 
+中文说明: [README.zh-CN.md](README.zh-CN.md)
+
 This repository builds task-relevant Ego-Exo data artifacts for coarse loco-manipulation FACT tokenizer training.
 
 The goal is not to select visually pleasing videos. The goal is to convert broad Ego-Exo takes into reproducible training artifacts where:
