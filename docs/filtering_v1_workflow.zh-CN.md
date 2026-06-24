@@ -2,6 +2,14 @@
 
 `filtering_v1` 的目标是把 `filtering_v0` 的自动 proxy 粗筛，升级成经过人工校准的 task-relevant split。第一版仍然从 FACT 已经准备好的 NPZ 出发，不直接处理 Ego-Exo4D 原始视频。
 
+当前最重要的暂停点：
+
+```text
+先生成 annotation_batch_v1_all.csv
+然后人工填写并另存为 annotation_batch_v1_labeled.csv
+在 labeled.csv 完成之前，不要继续跑 ranker、split、NPZ 生成或 FACT 训练
+```
+
 ## 产物目标
 
 本轮固定输出到：

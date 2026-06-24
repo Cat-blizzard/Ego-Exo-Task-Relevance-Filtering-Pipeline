@@ -118,6 +118,15 @@ python tools/build_same_take_negative_index.py \
 
 Chinese workflow notes are available in [`docs/filtering_v1_workflow.zh-CN.md`](docs/filtering_v1_workflow.zh-CN.md).
 
+The workflow has two gates:
+
+1. Export the annotation CSV and stop for human labeling.
+2. Only after `annotation_batch_v1_labeled.csv` exists, run validation, ranker training, split generation, and filtered NPZ generation.
+
+Do not run the ranker or split commands before the labeled CSV is ready.
+
+### Stage 1: Export the human annotation CSV
+
 ```bash
 OUT=/data_all/intern02/egoexo-task-filter/outputs/filtering_v1_500takes_20260624
 V0=/data_all/intern02/egoexo-task-filter/outputs/filtering_v0_500takes_20260624
@@ -129,7 +138,27 @@ python tools/export_annotation_csv.py \
   --out $OUT/annotation_batch_v1_all.csv
 ```
 
-After humans fill `annotation_batch_v1_labeled.csv`, validate and train the primary `usable_for` ranker:
+Humans should inspect the contact sheets and fill these columns:
+
+```text
+take_relevance
+ego_hand_visibility
+exo_body_visibility
+object_interaction
+phase_diversity
+usable_for
+notes
+```
+
+Save the completed file as:
+
+```text
+$OUT/annotation_batch_v1_labeled.csv
+```
+
+### Stage 2: Validate labels and train the usable_for ranker
+
+Run this only after `annotation_batch_v1_labeled.csv` exists:
 
 ```bash
 python tools/validate_annotations.py \
@@ -159,7 +188,9 @@ python tools/summarize_annotation_calibration.py \
   --out $OUT/audit_report_v1.md
 ```
 
-Build `fact_main` and `fact_main_plus_loco25` transition selections:
+### Stage 3: Build transition selections and filtered NPZ files
+
+Run this only after `audit_report_v1.md` looks acceptable:
 
 ```bash
 BASE=/data_all/intern02/fact-tokenizer/data/fact_egoexo_sxh_handoff/splits/diverse_500takes_t0p5_s1_48t_seed123_80_20

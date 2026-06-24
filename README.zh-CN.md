@@ -260,6 +260,151 @@ python tools/build_same_take_negative_index.py \
 
 这个文件可以交给 `fact-tokenizer` 训练脚本，作为 v6e/v6f 的 same-take hard negative index。
 
+## filtering_v1 当前推荐流程
+
+`filtering_v1` 和 v0 最大区别是：**先人工校准，再训练 ranker，再生成 split**。不要拿 v0 的自动分数直接继续调阈值。
+
+当前流程分成三个阶段。
+
+### 阶段 1：导出人工标注表，然后暂停
+
+服务器上使用：
+
+```bash
+cd /data_all/intern02/Ego-Exo-Task-Relevance-Filtering-Pipeline
+
+PY=/home/intern02/miniconda3/envs/egoexo_fact/bin/python
+V0=/data_all/intern02/egoexo-task-filter/outputs/filtering_v0_500takes_20260624
+OUT=/data_all/intern02/egoexo-task-filter/outputs/filtering_v1_500takes_20260624
+mkdir -p "$OUT"
+
+$PY tools/export_annotation_csv.py \
+  --scores $V0/take_relevance_scores_all.csv \
+  --sample-size 500 \
+  --strategy v1_full_if_small \
+  --out $OUT/annotation_batch_v1_all.csv
+```
+
+这一步会导出当前 427 个 take。导出后先不要继续跑 ranker，也不要生成 split。下一步是人工看 contact sheet，并填写：
+
+```text
+take_relevance
+ego_hand_visibility
+exo_body_visibility
+object_interaction
+phase_diversity
+usable_for
+notes
+```
+
+人工填完后保存成：
+
+```text
+/data_all/intern02/egoexo-task-filter/outputs/filtering_v1_500takes_20260624/annotation_batch_v1_labeled.csv
+```
+
+### 阶段 2：标注完成后，校验并训练 ranker
+
+只有当 `annotation_batch_v1_labeled.csv` 已经存在时，才运行下面命令：
+
+```bash
+$PY tools/validate_annotations.py \
+  --annotations $OUT/annotation_batch_v1_labeled.csv
+
+$PY tools/train_relevance_ranker.py \
+  --features $V0/take_relevance_scores_all.csv \
+  --labels $OUT/annotation_batch_v1_labeled.csv \
+  --label-column usable_for \
+  --out $OUT/relevance_ranker_usable_for.pkl
+
+$PY tools/apply_relevance_ranker.py \
+  --features $V0/take_relevance_scores_all.csv \
+  --ranker $OUT/relevance_ranker_usable_for.pkl \
+  --out $OUT/take_relevance_ranked_all.csv
+
+$PY tools/build_filtered_split.py \
+  --ranked $OUT/take_relevance_ranked_all.csv \
+  --policy configs/filter_policy_v1.yaml \
+  --out $OUT/filtered_split_v1.json
+
+$PY tools/summarize_annotation_calibration.py \
+  --scores $V0/take_relevance_scores_all.csv \
+  --ranked $OUT/take_relevance_ranked_all.csv \
+  --annotations $OUT/annotation_batch_v1_labeled.csv \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --out $OUT/audit_report_v1.md
+```
+
+先看 `audit_report_v1.md`。如果 `fact_main` 里混入太多 scene-only / bad ego，或者 `discard` 误丢了很多 `tokenizer_main`，先修标注或 policy，不进入 FACT 训练。
+
+### 阶段 3：报告通过后，生成 FACT 可用 NPZ
+
+只用 `fact_main` 的第一版：
+
+```bash
+BASE=/data_all/intern02/fact-tokenizer/data/fact_egoexo_sxh_handoff/splits/diverse_500takes_t0p5_s1_48t_seed123_80_20
+
+$PY tools/build_transition_selection.py \
+  --npz $BASE/train_by_take.npz \
+  --split-name train \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main \
+  --out $OUT/transition_selection_fact_main_train.csv
+
+$PY tools/build_transition_selection.py \
+  --npz $BASE/heldout_by_take.npz \
+  --split-name heldout \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main \
+  --out $OUT/transition_selection_fact_main_heldout.csv
+
+$PY tools/build_filtered_npz.py \
+  --train-npz $BASE/train_by_take.npz \
+  --heldout-npz $BASE/heldout_by_take.npz \
+  --train-selection $OUT/transition_selection_fact_main_train.csv \
+  --heldout-selection $OUT/transition_selection_fact_main_heldout.csv \
+  --out-dir $OUT/filtered_npz/fact_main
+```
+
+`fact_main + capped loco_aux` 是第二个 ablation，不要一开始就用它替代主线：
+
+```bash
+$PY tools/build_transition_selection.py \
+  --npz $BASE/train_by_take.npz \
+  --split-name train \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main loco_aux \
+  --bucket-num-transitions loco_aux=12 \
+  --out $OUT/transition_selection_fact_main_plus_loco25_train.csv
+
+$PY tools/build_transition_selection.py \
+  --npz $BASE/heldout_by_take.npz \
+  --split-name heldout \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main loco_aux \
+  --bucket-num-transitions loco_aux=12 \
+  --out $OUT/transition_selection_fact_main_plus_loco25_heldout.csv
+
+$PY tools/build_filtered_npz.py \
+  --train-npz $BASE/train_by_take.npz \
+  --heldout-npz $BASE/heldout_by_take.npz \
+  --train-selection $OUT/transition_selection_fact_main_plus_loco25_train.csv \
+  --heldout-selection $OUT/transition_selection_fact_main_plus_loco25_heldout.csv \
+  --out-dir $OUT/filtered_npz/fact_main_plus_loco25
+```
+
+### 当前状态
+
+如果你是在当前服务器环境继续做，`annotation_batch_v1_all.csv` 已经可以直接生成或重新生成。现在真正需要人工完成的是：
+
+```text
+annotation_batch_v1_all.csv
+    -> 人工填写
+    -> annotation_batch_v1_labeled.csv
+```
+
+在这个文件完成之前，v1 后续命令都只是准备好，暂时不用跑。
+
 ## 人工标注类别
 
 `take_relevance`：
