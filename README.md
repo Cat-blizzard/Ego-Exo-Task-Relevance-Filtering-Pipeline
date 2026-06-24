@@ -156,6 +156,29 @@ Save the completed file as:
 $OUT/annotation_batch_v1_labeled.csv
 ```
 
+For easier local annotation, build a review pack with friendly image names:
+
+```bash
+python tools/build_annotation_review_pack.py \
+  --annotations $OUT/annotation_batch_v1_labeled.csv \
+  --out-dir $OUT/review_pack \
+  --copy-images
+```
+
+On a local Windows copy, map server paths to the downloaded folder:
+
+```powershell
+$env:PYTHONPATH="D:\Ego-Exo-Task-Relevance-Filtering-Pipeline"
+python D:\Ego-Exo-Task-Relevance-Filtering-Pipeline\tools\build_annotation_review_pack.py `
+  --annotations D:\egoexo_v1_annotation\annotation_batch_v1_labeled.csv `
+  --out-dir D:\egoexo_v1_annotation\review_pack `
+  --path-prefix-from /data_all/intern02/egoexo-task-filter/outputs/filtering_v0_500takes_20260624 `
+  --path-prefix-to D:/egoexo_v1_annotation `
+  --copy-images
+```
+
+Annotators can then use `review_pack/annotation_review.csv` together with `review_pack/index.html` and `review_pack/review_images/`.
+
 ### Stage 2: Validate labels and train the usable_for ranker
 
 Run this only after `annotation_batch_v1_labeled.csv` exists:

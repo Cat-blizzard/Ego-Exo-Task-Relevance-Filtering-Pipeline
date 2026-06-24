@@ -405,6 +405,44 @@ annotation_batch_v1_all.csv
 
 在这个文件完成之前，v1 后续命令都只是准备好，暂时不用跑。
 
+### 可选：生成更适合人工看的 review pack
+
+原始 contact sheet 文件名是 UUID，例如：
+
+```text
+4abc4d07-a180-4713-b507-69c2fe7f2db8.jpg
+```
+
+这对人工标注不友好。可以生成一份 review pack，把图片复制成顺序编号和任务名，例如：
+
+```text
+0001_heldout_Basketball_Basketball_Drills_Reverse_Layup_32d54e67.jpg
+0002_heldout_Basketball_Basketball_Drills_Reverse_Layup_3fce7d86.jpg
+```
+
+如果已经把 CSV 和 contact sheets 下载到本地 `D:\egoexo_v1_annotation`，在本地 PowerShell 运行：
+
+```powershell
+$env:PYTHONPATH="D:\Ego-Exo-Task-Relevance-Filtering-Pipeline"
+
+python D:\Ego-Exo-Task-Relevance-Filtering-Pipeline\tools\build_annotation_review_pack.py `
+  --annotations D:\egoexo_v1_annotation\annotation_batch_v1_labeled.csv `
+  --out-dir D:\egoexo_v1_annotation\review_pack `
+  --path-prefix-from /data_all/intern02/egoexo-task-filter/outputs/filtering_v0_500takes_20260624 `
+  --path-prefix-to D:/egoexo_v1_annotation `
+  --copy-images
+```
+
+生成后给标注同学使用：
+
+```text
+D:\egoexo_v1_annotation\review_pack\annotation_review.csv
+D:\egoexo_v1_annotation\review_pack\index.html
+D:\egoexo_v1_annotation\review_pack\review_images\
+```
+
+标注时直接填 `annotation_review.csv` 里的空列即可。`review_id` 和 `review_image` 只是辅助列，不影响后续校验和 ranker 训练。
+
 ## 人工标注类别
 
 `take_relevance`：

@@ -159,6 +159,67 @@ def test_validate_annotations_rejects_bad_values_and_accepts_valid_rows(tmp_path
     assert "scene-only" in result.stderr
 
 
+def test_annotation_review_pack_copies_friendly_images(tmp_path: Path) -> None:
+    local_root = tmp_path / "local"
+    server_root = "/server/filtering_v0"
+    image_dir = local_root / "contact_sheets_train"
+    image_dir.mkdir(parents=True)
+    image_path = image_dir / "abc-123.jpg"
+    image_path.write_bytes(b"fake-jpeg")
+    annotations = tmp_path / "annotations.csv"
+    with annotations.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "auto_bucket",
+                "contact_sheet_path",
+                "ego_hand_visibility",
+                "exo_body_visibility",
+                "notes",
+                "object_interaction",
+                "parent_task_name",
+                "phase_diversity",
+                "relevance_score",
+                "take_relevance",
+                "take_uid",
+                "task_name",
+                "usable_for",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "auto_bucket": "F_uncertain",
+                "contact_sheet_path": f"{server_root}/contact_sheets_train/abc-123.jpg",
+                "parent_task_name": "Bike Repair",
+                "task_name": "Tighten Wheel",
+                "relevance_score": "0.7",
+                "take_uid": "abc-123",
+            }
+        )
+    out_dir = tmp_path / "review_pack"
+    run_tool(
+        tmp_path,
+        "tools/build_annotation_review_pack.py",
+        "--annotations",
+        str(annotations),
+        "--out-dir",
+        str(out_dir),
+        "--path-prefix-from",
+        server_root,
+        "--path-prefix-to",
+        str(local_root),
+        "--copy-images",
+    )
+    review_csv = out_dir / "annotation_review.csv"
+    with review_csv.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["review_id"] == "0001"
+    assert rows[0]["review_image"].startswith("review_images/0001_train_Bike_Repair_Tighten_Wheel_abc_123")
+    assert (out_dir / rows[0]["review_image"]).exists()
+    assert (out_dir / "index.html").exists()
+
+
 def run_tool_allow_failure(tmp_path: Path, *args: str) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
