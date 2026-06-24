@@ -23,6 +23,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--filtered-split", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--num-transitions", type=int, default=48)
+    parser.add_argument(
+        "--bucket-num-transitions",
+        action="append",
+        default=[],
+        metavar="BUCKET=COUNT",
+        help="Override --num-transitions for a bucket, e.g. loco_aux=12 for a capped loco ablation.",
+    )
     parser.add_argument("--include-buckets", nargs="+", default=["fact_main", "loco_aux"])
     parser.add_argument("--view-keys", nargs=2, default=["ego", "exo"])
     return parser.parse_args()
@@ -60,31 +67,49 @@ def select_rows(indices: list[int], score: np.ndarray, timestamps: np.ndarray, c
     return sorted(set(selected), key=lambda idx: float(timestamps[idx]))
 
 
+def parse_bucket_counts(values: list[str], default_count: int) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"--bucket-num-transitions must be BUCKET=COUNT, got {value!r}")
+        bucket, count_text = value.split("=", 1)
+        bucket = bucket.strip()
+        count = int(count_text)
+        if not bucket or count <= 0:
+            raise ValueError(f"Invalid bucket transition cap: {value!r}")
+        counts[bucket] = count
+    counts.setdefault("default", default_count)
+    return counts
+
+
 def main() -> None:
     args = parse_args()
     metadata = load_npz_metadata(args.npz)
     filtered_split = json.loads(args.filtered_split.read_text(encoding="utf-8"))
     take_bucket = selected_takes(filtered_split, args.split_name, args.include_buckets)
     grouped = group_indices_by_take(metadata["take_uid"])
+    bucket_counts = parse_bucket_counts(args.bucket_num_transitions, args.num_transitions)
     with np.load(args.npz, allow_pickle=False) as data:
         score = sum(motion_scores(np.asarray(data[view_key])) for view_key in args.view_keys) / len(args.view_keys)
     rows = []
     for take_uid, indices in sorted(grouped.items()):
         if take_uid not in take_bucket:
             continue
-        selected = set(select_rows(indices, score, metadata["timestamp"], args.num_transitions))
+        bucket = take_bucket[take_uid]
+        count = bucket_counts.get(bucket, bucket_counts["default"])
+        selected = set(select_rows(indices, score, metadata["timestamp"], count))
         for idx in indices:
             is_selected = idx in selected
             rows.append(
                 {
                     "split": args.split_name,
-                    "bucket": take_bucket[take_uid],
+                    "bucket": bucket,
                     "take_uid": take_uid,
                     "row_index": idx,
                     "sample_id": str(metadata["sample_id"][idx]),
                     "timestamp": float(metadata["timestamp"][idx]),
                     "selected": int(is_selected),
-                    "selection_reason": "motion_aware_temporal_coverage" if is_selected else "",
+                    "selection_reason": f"motion_aware_temporal_coverage_top{count}" if is_selected else "",
                     "motion_score": float(score[idx]),
                 }
             )

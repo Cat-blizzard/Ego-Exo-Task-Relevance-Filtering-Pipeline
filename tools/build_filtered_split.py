@@ -24,6 +24,15 @@ def get_probability(row: pd.Series, candidates: list[str], fallback: str) -> flo
     return float(row.get(fallback, 0.0))
 
 
+def blocked_by_policy(row: pd.Series, blocks: dict[str, float] | None) -> bool:
+    if not blocks:
+        return False
+    for column, threshold in blocks.items():
+        if column in row and pd.notna(row[column]) and float(row[column]) >= float(threshold):
+            return True
+    return False
+
+
 def main() -> None:
     args = parse_args()
     ranked = pd.read_csv(args.ranked)
@@ -41,10 +50,10 @@ def main() -> None:
             split = "train"
         interaction_prob = get_probability(
             row,
-            ["prob_a_interaction_rich", "prob_interaction_rich", "prob_tokenizer_main"],
+            ["prob_tokenizer_main", "prob_a_interaction_rich", "prob_interaction_rich"],
             "interaction_score",
         )
-        loco_prob = get_probability(row, ["prob_b_loco_body", "prob_loco_body", "prob_loco_aux"], "loco_score")
+        loco_prob = get_probability(row, ["prob_loco_aux", "prob_b_loco_body", "prob_loco_body"], "loco_score")
         scene = float(row.get("scene_only_score", 0.0))
         temporal = float(row.get("temporal_diversity_score", 0.0))
         item = {
@@ -57,13 +66,16 @@ def main() -> None:
             "scene_only_score": scene,
             "temporal_diversity_score": temporal,
         }
+        fact_blocked = blocked_by_policy(row, fact_policy.get("blocked_probability_columns"))
+        loco_blocked = blocked_by_policy(row, loco_policy.get("blocked_probability_columns"))
         if (
-            interaction_prob >= float(fact_policy["min_interaction_prob"])
+            not fact_blocked
+            and interaction_prob >= float(fact_policy["min_interaction_prob"])
             and temporal >= float(fact_policy["min_temporal_diversity"])
             and scene <= float(fact_policy["max_scene_only"])
         ):
             output["splits"][split]["fact_main"].append(item)
-        elif loco_prob >= float(loco_policy["min_loco_prob"]) and scene <= float(loco_policy["max_scene_only"]):
+        elif not loco_blocked and loco_prob >= float(loco_policy["min_loco_prob"]) and scene <= float(loco_policy["max_scene_only"]):
             output["splits"][split]["loco_aux"].append(item)
         else:
             output["splits"][split]["discard"].append(item)

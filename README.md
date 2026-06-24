@@ -112,6 +112,103 @@ python tools/build_same_take_negative_index.py \
   --out $OUT/same_take_negative_index_train.npz
 ```
 
+## filtering_v1 Human-Calibrated Flow
+
+`filtering_v1` upgrades the v0 proxy filter with manual calibration labels. For the current 427-take split, export all takes for annotation:
+
+Chinese workflow notes are available in [`docs/filtering_v1_workflow.zh-CN.md`](docs/filtering_v1_workflow.zh-CN.md).
+
+```bash
+OUT=/data_all/intern02/egoexo-task-filter/outputs/filtering_v1_500takes_20260624
+V0=/data_all/intern02/egoexo-task-filter/outputs/filtering_v0_500takes_20260624
+
+python tools/export_annotation_csv.py \
+  --scores $V0/take_relevance_scores_all.csv \
+  --sample-size 500 \
+  --strategy v1_full_if_small \
+  --out $OUT/annotation_batch_v1_all.csv
+```
+
+After humans fill `annotation_batch_v1_labeled.csv`, validate and train the primary `usable_for` ranker:
+
+```bash
+python tools/validate_annotations.py \
+  --annotations $OUT/annotation_batch_v1_labeled.csv
+
+python tools/train_relevance_ranker.py \
+  --features $V0/take_relevance_scores_all.csv \
+  --labels $OUT/annotation_batch_v1_labeled.csv \
+  --label-column usable_for \
+  --out $OUT/relevance_ranker_usable_for.pkl
+
+python tools/apply_relevance_ranker.py \
+  --features $V0/take_relevance_scores_all.csv \
+  --ranker $OUT/relevance_ranker_usable_for.pkl \
+  --out $OUT/take_relevance_ranked_all.csv
+
+python tools/build_filtered_split.py \
+  --ranked $OUT/take_relevance_ranked_all.csv \
+  --policy configs/filter_policy_v1.yaml \
+  --out $OUT/filtered_split_v1.json
+
+python tools/summarize_annotation_calibration.py \
+  --scores $V0/take_relevance_scores_all.csv \
+  --ranked $OUT/take_relevance_ranked_all.csv \
+  --annotations $OUT/annotation_batch_v1_labeled.csv \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --out $OUT/audit_report_v1.md
+```
+
+Build `fact_main` and `fact_main_plus_loco25` transition selections:
+
+```bash
+BASE=/data_all/intern02/fact-tokenizer/data/fact_egoexo_sxh_handoff/splits/diverse_500takes_t0p5_s1_48t_seed123_80_20
+
+python tools/build_transition_selection.py \
+  --npz $BASE/train_by_take.npz \
+  --split-name train \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main \
+  --out $OUT/transition_selection_fact_main_train.csv
+
+python tools/build_transition_selection.py \
+  --npz $BASE/heldout_by_take.npz \
+  --split-name heldout \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main \
+  --out $OUT/transition_selection_fact_main_heldout.csv
+
+python tools/build_transition_selection.py \
+  --npz $BASE/train_by_take.npz \
+  --split-name train \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main loco_aux \
+  --bucket-num-transitions loco_aux=12 \
+  --out $OUT/transition_selection_fact_main_plus_loco25_train.csv
+
+python tools/build_transition_selection.py \
+  --npz $BASE/heldout_by_take.npz \
+  --split-name heldout \
+  --filtered-split $OUT/filtered_split_v1.json \
+  --include-buckets fact_main loco_aux \
+  --bucket-num-transitions loco_aux=12 \
+  --out $OUT/transition_selection_fact_main_plus_loco25_heldout.csv
+
+python tools/build_filtered_npz.py \
+  --train-npz $BASE/train_by_take.npz \
+  --heldout-npz $BASE/heldout_by_take.npz \
+  --train-selection $OUT/transition_selection_fact_main_train.csv \
+  --heldout-selection $OUT/transition_selection_fact_main_heldout.csv \
+  --out-dir $OUT/filtered_npz/fact_main
+
+python tools/build_filtered_npz.py \
+  --train-npz $BASE/train_by_take.npz \
+  --heldout-npz $BASE/heldout_by_take.npz \
+  --train-selection $OUT/transition_selection_fact_main_plus_loco25_train.csv \
+  --heldout-selection $OUT/transition_selection_fact_main_plus_loco25_heldout.csv \
+  --out-dir $OUT/filtered_npz/fact_main_plus_loco25
+```
+
 ## Bucket Definitions
 
 - `A_interaction_rich`: ego has hand/object or manipulation cues, exo has body/global context, phases include reach/contact/carry/place or related interaction.

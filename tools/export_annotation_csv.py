@@ -29,30 +29,65 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export a stratified take annotation CSV from relevance scores.")
     parser.add_argument("--scores", type=Path, required=True)
     parser.add_argument("--sample-size", type=int, default=300)
+    parser.add_argument(
+        "--strategy",
+        choices=["stratified_auto_bucket", "v1_full_if_small"],
+        default="stratified_auto_bucket",
+        help="v1_full_if_small exports all rows when the score table has no more than --sample-size rows.",
+    )
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--out", type=Path, required=True)
     return parser.parse_args()
 
 
+def score_band(row: dict[str, str]) -> str:
+    try:
+        value = float(row.get("relevance_score", "0"))
+    except ValueError:
+        value = 0.0
+    if value >= 0.66:
+        return "high"
+    if value >= 0.33:
+        return "mid"
+    return "low"
+
+
+def group_key(row: dict[str, str], strategy: str) -> str:
+    if strategy == "v1_full_if_small":
+        return "|".join(
+            [
+                row.get("auto_bucket", "F_uncertain"),
+                row.get("filtered_bucket", ""),
+                row.get("parent_task_name", ""),
+                score_band(row),
+            ]
+        )
+    return row.get("auto_bucket", "F_uncertain")
+
+
 def main() -> None:
     args = parse_args()
     rows = read_csv(args.scores)
-    grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
-    for row in rows:
-        grouped[row.get("auto_bucket", "F_uncertain")].append(row)
-    rng = random.Random(args.seed)
-    selected: list[dict[str, str]] = []
-    buckets = sorted(grouped)
-    per_bucket = max(1, args.sample_size // max(1, len(buckets)))
-    for bucket in buckets:
-        values = grouped[bucket]
-        rng.shuffle(values)
-        selected.extend(values[:per_bucket])
-    if len(selected) < args.sample_size:
-        remaining = [row for row in rows if row not in selected]
-        rng.shuffle(remaining)
-        selected.extend(remaining[: args.sample_size - len(selected)])
-    selected = selected[: args.sample_size]
+    if args.strategy == "v1_full_if_small" and len(rows) <= args.sample_size:
+        selected = sorted(rows, key=lambda row: (row.get("split", ""), row.get("parent_task_name", ""), row.get("take_uid", "")))
+    else:
+        selected = []
+        grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
+        for row in rows:
+            grouped[group_key(row, args.strategy)].append(row)
+        rng = random.Random(args.seed)
+        buckets = sorted(grouped)
+        per_bucket = max(1, args.sample_size // max(1, len(buckets)))
+        for bucket in buckets:
+            values = grouped[bucket]
+            rng.shuffle(values)
+            selected.extend(values[:per_bucket])
+        if len(selected) < args.sample_size:
+            selected_ids = {row.get("take_uid", "") for row in selected}
+            remaining = [row for row in rows if row.get("take_uid", "") not in selected_ids]
+            rng.shuffle(remaining)
+            selected.extend(remaining[: args.sample_size - len(selected)])
+        selected = selected[: args.sample_size]
     output = []
     for row in selected:
         output.append(
