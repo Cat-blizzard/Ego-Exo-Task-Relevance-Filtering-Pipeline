@@ -218,6 +218,7 @@ def test_annotation_review_pack_copies_friendly_images(tmp_path: Path) -> None:
     assert rows[0]["review_image"].startswith("review_images/0001_train_Bike_Repair_Tighten_Wheel_abc_123")
     assert (out_dir / rows[0]["review_image"]).exists()
     assert (out_dir / "index.html").exists()
+    assert (out_dir / "ANNOTATOR_GUIDE.zh-CN.md").exists()
 
 
 def run_tool_allow_failure(tmp_path: Path, *args: str) -> subprocess.CompletedProcess:

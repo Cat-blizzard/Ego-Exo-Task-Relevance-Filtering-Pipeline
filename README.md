@@ -1,5 +1,24 @@
 # Ego-Exo Task-Relevance Filtering Pipeline
 
+## Annotator Quick Start
+
+If you only need to label data, read:
+
+```text
+docs/annotator_quickstart.zh-CN.md
+```
+
+A generated review pack contains:
+
+```text
+review_pack/ANNOTATOR_GUIDE.zh-CN.md
+review_pack/annotation_review.csv
+review_pack/index.html
+review_pack/review_images/
+```
+
+Annotators only need to open `index.html`, fill the empty label columns in `annotation_review.csv`, and return the completed CSV.
+
 中文说明: [README.zh-CN.md](README.zh-CN.md)
 
 This repository builds task-relevant Ego-Exo data artifacts for coarse loco-manipulation FACT tokenizer training.

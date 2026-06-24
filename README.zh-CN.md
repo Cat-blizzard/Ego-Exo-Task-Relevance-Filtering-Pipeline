@@ -1,5 +1,40 @@
 # Ego-Exo Task-Relevance Filtering Pipeline 中文说明
 
+## 数据标注员只看这里
+
+如果你的任务只是做人工标注，不需要理解训练代码。请使用：
+
+```text
+docs/annotator_quickstart.zh-CN.md
+```
+
+实际标注包里也会自动生成同一份说明：
+
+```text
+review_pack/ANNOTATOR_GUIDE.zh-CN.md
+review_pack/annotation_review.csv
+review_pack/index.html
+review_pack/review_images/
+```
+
+标注员只需要：
+
+```text
+1. 打开 index.html 看图
+2. 打开 annotation_review.csv 填空列
+3. 只填写 ego_hand_visibility / exo_body_visibility / object_interaction / phase_diversity / take_relevance / usable_for / notes
+```
+
+快速判断：
+
+```text
+手物交互明显 -> A_interaction_rich / tokenizer_main
+只有身体移动 -> B_loco_body / loco_aux
+纯场景、纯头动、看不清 -> discard 或 diagnostic_candidate
+```
+
+下面是项目负责人和工程侧说明，普通标注员可以不用读。
+
 这个仓库用于构建 **适合 coarse loco-manipulation FACT tokenizer 训练的数据筛选管线**。
 
 它的目标不是筛“画面好看”的视频，而是把泛 Ego-Exo4D 数据筛成对 FACT action token 有用的数据：

@@ -102,12 +102,34 @@ def write_html(path: Path, rows: list[dict[str, str]]) -> None:
 </head>
 <body>
   <h1>Annotation Review Pack</h1>
-  <p>Fill the annotation CSV using the review_id and review_image columns.</p>
+  <p>Fill <code>annotation_review.csv</code> using <code>review_id</code> and <code>review_image</code>. See <a href="ANNOTATOR_GUIDE.zh-CN.md">ANNOTATOR_GUIDE.zh-CN.md</a> for the labeling rules.</p>
   {''.join(cards)}
 </body>
 </html>
 """
     path.write_text(document, encoding="utf-8")
+
+
+def write_annotator_guide(path: Path) -> None:
+    source = ROOT / "docs" / "annotator_quickstart.zh-CN.md"
+    if source.exists():
+        shutil.copy2(source, path)
+        return
+    path.write_text(
+        "\n".join(
+            [
+                "# Ego-Exo v1 数据标注快速说明",
+                "",
+                "打开 annotation_review.csv 和 index.html。",
+                "只填写 ego_hand_visibility, exo_body_visibility, object_interaction, phase_diversity, take_relevance, usable_for, notes。",
+                "明显手物交互填 A_interaction_rich / tokenizer_main。",
+                "明显身体移动但手物交互弱填 B_loco_body / loco_aux。",
+                "纯场景、纯头动、看不清填 discard 或 diagnostic_candidate。",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 def main() -> None:
@@ -143,6 +165,7 @@ def main() -> None:
     review_csv = args.out_dir / "annotation_review.csv"
     write_csv(review_csv, output_rows, fieldnames=fieldnames)
     write_html(args.out_dir / "index.html", output_rows)
+    write_annotator_guide(args.out_dir / "ANNOTATOR_GUIDE.zh-CN.md")
     if missing:
         missing_path = args.out_dir / "missing_images.txt"
         missing_path.write_text("\n".join(missing) + "\n", encoding="utf-8")
